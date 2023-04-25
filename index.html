@@ -1,0 +1,100 @@
+<html>
+  <head>
+    <script src="//cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.8.3/dist/ffmpeg.min.js"></script>
+    <style>
+      html,
+      body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+      }
+      body {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
+    </style>
+  </head>
+  <body>
+    <h3>Click start to transcode images to mp4 (x264) and play!</h3>
+    <video id="output-video" controls></video><br />
+    <br />
+    <p>Image</p>
+    <input type="file" name="image" id="image" accept="image/*" />
+    <p>Audio</p>
+    <input type="file" name="audio" id="audio" accept="audio/*" />
+    <br />
+    <button id="start-btn">Start</button>
+    <p id="message"></p>
+    <script>
+      const { createFFmpeg, fetchFile } = FFmpeg;
+      const ffmpeg = createFFmpeg({ log: true });
+
+      const image2video = async () => {
+        const image = document.getElementById("image").files[0];
+        const audio = document.getElementById("audio").files[0];
+
+        const getDuration = (file) => {
+          return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.readAsArrayBuffer(file);
+            reader.onloadend = (e) => {
+              const ctx = new AudioContext();
+              const audioArrayBuffer = e.target.result;
+              ctx.decodeAudioData(
+                audioArrayBuffer,
+                (data) => {
+                  const duration = data.duration;
+                  resolve(duration);
+                },
+                (error) => {
+                  reject(error);
+                }
+              );
+            };
+            reader.onerror = reject;
+          });
+        };
+
+        const message = document.getElementById("message");
+        message.innerHTML = "Loading ffmpeg-core.js";
+        await ffmpeg.load();
+        message.innerHTML = "Loading data";
+        ffmpeg.FS("writeFile", audio.name, await fetchFile(audio));
+        ffmpeg.FS("writeFile", image.name, await fetchFile(image));
+        message.innerHTML = "Start transcoding";
+        await ffmpeg.run(
+          "-framerate",
+          "24",
+          "-loop",
+          "1",
+          "-i",
+          image.name,
+          "-i",
+          audio.name,
+          "-c:a",
+          "copy",
+          "-shortest",
+          "-c:v",
+          "libx264",
+          "-t",
+          String(await getDuration(audio)),
+          "-pix_fmt",
+          "yuv420p",
+          "out.mp4"
+        );
+        const data = ffmpeg.FS("readFile", "out.mp4");
+        ffmpeg.FS("unlink", audio.name);
+        ffmpeg.FS("unlink", image.name);
+
+        const video = document.getElementById("output-video");
+        video.src = URL.createObjectURL(
+          new Blob([data.buffer], { type: "video/mp4" })
+        );
+      };
+
+      const elm = document.getElementById("start-btn");
+      elm.addEventListener("click", image2video);
+    </script>
+  </body>
+</html>
